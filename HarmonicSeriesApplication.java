@@ -1,182 +1,156 @@
 package harmonicseries;
 
 import java.math.BigInteger;
+import java.lang.Runnable;
 
 /**
  *
  * @author James Clark
  */
 public class HarmonicSeriesApplication {
+    private static class PartialHarmonicSeriesSum extends Thread
+    {
+        private int begin = 0;
+        private int end = 0;
+        private double sum = 0.0;
+        
+        public PartialHarmonicSeriesSum(int begin, int end)
+        {
+            if (begin > end)
+            {
+                throw new IllegalArgumentException("begin > end");
+            }
+            else if (begin < 0)
+            {
+                throw new IllegalArgumentException("begin < 0");
+            }
+            else if (end < 0)
+            {
+                throw new IllegalArgumentException("end < 0");
+            }
+            
+            this.begin = begin;
+            this.end = end;
+            this.sum = 0.0;
+        }
+        
+        public void run()
+        {
+            for (int i = this.begin; i <= this.end; i++)
+                this.sum += 1.0 / (double)i;
+        }
+        
+        public double getSum()
+        {
+            return this.sum;
+        }
+    }
     
-    private static class HarmonicSeriesSum implements Runnable
+    
+    private static class HarmonicSeriesSum
     {
         private double sum = 0.0;
-        /*
-        private int begin = 0; //Only useful for partial sums
-        private int end = 0;   //Only useful for partial sums
-        */
-        private BigInteger begin = BigInteger.ZERO;
-        private BigInteger end = BigInteger.ZERO;
+        private int terms = 0;
         
-        public HarmonicSeriesSum (BigInteger terms) throws IllegalArgumentException
+        
+        public HarmonicSeriesSum(int terms) throws IllegalArgumentException
         {
-            if (terms.compareTo(BigInteger.ZERO) <= 0)
+            if (terms < 0)
             {
-                this.begin = BigInteger.ONE;
-                this.end = terms;
+                throw new IllegalArgumentException("terms < 0");
             }
             else
             {
-                throw new IllegalArgumentException();
+                this.sum = 0;
+                this.terms = terms;
             }
         }
         
-        //Useful for generating partial sums
-        private HarmonicSeriesSum (BigInteger begin, BigInteger end) throws IllegalArgumentException
+        public void parallelSum(int threads)
         {
-            if (begin.compareTo(BigInteger.ONE) >= 0)
+            this.sum = 0.0;
+               
+            //Limit to only one thread if there are fewer terms than threads requested
+            if (this.terms < threads)
+                threads = 1;
+            
+            PartialHarmonicSeriesSum partialSums[] = new PartialHarmonicSeriesSum[threads];
+            
+            int delta = (int)Math.ceil((float)terms / (float)threads);
+            int begin = 1;
+            int end = 1;
+            
+            for (int i = 0; i < partialSums.length; i++)
             {
-                this.begin = begin.min(end);
-                this.end = end.max(begin);
-            }
-            else 
-            {
-                this.begin = BigInteger.ONE;
-                this.end = BigInteger.ONE;
-                throw new IllegalArgumentException();
-            } 
-        }
+                //Limit end term based on how many threads left to allocate
+                end = Math.min(begin + delta - 1, terms - (partialSums.length - 1 - i));
+                    
+                //Create and start new thread
+                partialSums[i] = new PartialHarmonicSeriesSum(begin, end);
+                partialSums[i].start();
                 
+                begin = Math.min(end + 1, terms);
+            }
+            
+            
+            //Merge summing threads to main thread
+            try
+            {
+                for (PartialHarmonicSeriesSum partialSum : partialSums)
+                {
+                    partialSum.join();
+                }
+            }
+            catch (InterruptedException e) {}
+            
+            //Add together all partial sums
+            for (PartialHarmonicSeriesSum partialSum : partialSums)
+            {
+                this.sum += partialSum.getSum();
+            }
+        }
         
-        private double getSum()
+        //Perform a single-threaded sum
+        public void sum()
+        {
+            this.sum = 0.0;
+            
+            for (int i = 1; i <= terms; i++)
+                this.sum += 1.0/(double)i;
+        }
+        
+        public double getSum()
         {
             return this.sum;
         }
         
-        //Overloaded from java.lang.Thread
-        public void run()
+        public int getTerms()
         {
-            this.sum();
+            return this.terms;
         }
         
-        public static double parallelSum(BigInteger terms, int threads)
+        public void addTerm()
         {
-            double sum = 0.0;
-               
-            //Limit to only one thread if there are fewer terms than threads requested
-            if (terms.compareTo(BigInteger.valueOf(threads)) < 1)
-                threads = 1;
-            
-            HarmonicSeriesSum partialSums[] = new HarmonicSeriesSum[threads];
-            
-            int delta = (int)Math.ceil((float)terms / (float)threads);
-            int begin = 1;
-            int end = 1;
-            
-            for (int i = 0; i < partialSums.length; i++)
-            {
-                //Limit end term based on how many threads left to allocate
-                end = Math.min(begin + delta - 1, terms - (partialSums.length - 1 - i));
-                    
-                //Create and start new thread
-                partialSums[i] = new HarmonicSeriesSum(begin, end);
-                partialSums[i].start();
-                
-                begin = Math.min(end + 1, terms);
-            }
-            
-            
-            //Merge summing threads to main thread
-            try
-            {
-                for (HarmonicSeriesSum partialSum : partialSums)
-                {
-                    partialSum.join();
-                }
-            }
-            catch (InterruptedException e) {}
-            
-            //Add together all partial sums
-            for (HarmonicSeriesSum partialSum: partialSums)
-            {
-                sum += partialSum.getSum();
-            }
-            
-            return sum;
+            this.terms++;
+            this.sum += 1/(float)this.terms;
         }
         
-        /*
-        public static double parallelSum(int terms, int threads)
+        public void subtractTerm()
         {
-            double sum = 0.0;
-               
-            //Limit to only one thread if there are fewer terms than threads requested
-            if (terms < threads)
-                threads = 1;
-            
-            HarmonicSeriesSum partialSums[] = new HarmonicSeriesSum[threads];
-            
-            int delta = (int)Math.ceil((float)terms / (float)threads);
-            int begin = 1;
-            int end = 1;
-            
-            for (int i = 0; i < partialSums.length; i++)
+            if (this.terms > 0)
             {
-                //Limit end term based on how many threads left to allocate
-                end = Math.min(begin + delta - 1, terms - (partialSums.length - 1 - i));
-                    
-                //Create and start new thread
-                partialSums[i] = new HarmonicSeriesSum(begin, end);
-                partialSums[i].start();
-                
-                begin = Math.min(end + 1, terms);
+                this.terms--;
+                this.sum = 1/(float)this.terms;
             }
-            
-            
-            //Merge summing threads to main thread
-            try
+            else
             {
-                for (HarmonicSeriesSum partialSum : partialSums)
-                {
-                    partialSum.join();
-                }
+                this.terms = 0;
+                this.sum = 0.0;
             }
-            catch (InterruptedException e) {}
-            
-            //Add together all partial sums
-            for (HarmonicSeriesSum partialSum: partialSums)
-            {
-                sum += partialSum.getSum();
-            }
-            
-            return sum;
-        }
-        */
-        //Perform a single-threaded sum
-        public double sum()
-        {
-            this.sum = 0.0;
-            
-            for (int i = this.begin; i <= this.end; i++)
-                this.sum += 1.0/(double)i;
-            
-            return sum;
-        }
-        
-        public double sum(int terms)
-        {
-            if (terms > 0)
-            {
-                this.begin = 1;
-                this.end = terms;
-                
-                return this.sum(terms);
-            }
-            else return 0;
         }
         
         //Estimate terms to sum before exceeding M
-        public BigInteger estimateThreshold (double M)
+        public int estimateTermsToSum (double M)
         {
             return 0;
         }
@@ -208,8 +182,15 @@ public class HarmonicSeriesApplication {
         System.out.println(sum);
         */
         
-        double e = approximateEuler(30);
-        System.out.println(e);
+        HarmonicSeriesSum series = new HarmonicSeriesSum(100);
+        
+        series.parallelSum(8);
+        double sum = series.getSum();
+        
+        double e_to_m = Math.exp(sum);
+        System.out.println("e^" + sum + " = " + e_to_m);
+        System.out.println(series.getTerms() + "/" + e_to_m + " = " + series.getTerms()/e_to_m);
+        System.out.println(sum);
     }
     
 }
